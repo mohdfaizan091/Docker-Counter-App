@@ -1,37 +1,36 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { createClient } from "redis";
 
 const app = express();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const redisClient = createClient({
+  url: "redis://redis:6379",
+});
 
-const DATA_DIR = path.join(__dirname, "data");
-const FILE_PATH = path.join(DATA_DIR, "count.txt");
+redisClient.on("error", (err) => {
+  console.error("Redis Client Error:", err);
+});
 
-// Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR);
+async function startServer() {
+  await redisClient.connect();
+
+  app.get("/count", async (req, res) => {
+    const count = await redisClient.get("count");
+    res.json({
+      count: count ? parseInt(count, 10) : 0,
+    });
+  });
+
+  app.get("/increment", async (req, res) => {
+    const newCount = await redisClient.incr("count");
+    res.json({
+      count: newCount,
+    });
+  });
+
+  app.listen(3000, () => {
+    console.log("App running on port 3000");
+  });
 }
 
-// Load count from file if it exists, else start at 0
-let count = 0;
-if (fs.existsSync(FILE_PATH)) {
-  count = parseInt(fs.readFileSync(FILE_PATH, "utf-8")) || 0;
-}
-
-app.get("/count", (req, res) => {
-  res.json({ count });
-});
-
-app.get("/increment", (req, res) => {
-  count++;
-  fs.writeFileSync(FILE_PATH, String(count));
-  res.json({ count });
-});
-
-app.listen(3000, () => {
-  console.log("App running on port 3000");
-});
+startServer();
